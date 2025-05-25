@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy List Real Time</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.2);
+            }
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        .pulse {
+            animation: pulse 1s infinite;
+        }
+
+        .active-page {
+            font-weight: bold;
+            color: #F44336;
+        }
+
+        .gradient-text {
+            background: linear-gradient(90deg, rgba(255, 0, 150, 1) 0%, rgba(0, 204, 255, 1) 100%);
+            background-size: 400% 400%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: glitter 5s ease infinite;
+        }
+
+        @keyframes glitter {
+            0% {
+                background-position: 0% 50%;
+            }
+            50% {
+                background-position: 100% 50%;
+            }
+            100% {
+                background-position: 0% 50%;
+            }
+        }
+
+        .search-container {
+            margin-bottom: 15px;
+        }
+
+        .refresh-button {
+            background: linear-gradient(90deg, rgba(255, 0, 150, 1), rgba(0, 204, 255, 1));
+        }
+
+        input[type="text"] {
+            width: 300px;
+            color: black;
+            background-color: white;
+            border: 2px solid #ccc;
+        }
+    </style>
+</head>
+
+<body class="bg-gray-900 text-white">
+    <div class="container mx-auto p-5">
+        <div class="flex items-center justify-center mb-5">
+            <i class="fas fa-dove text-5xl mr-2 pulse" style="color: #D3D3D3;"></i>
+            <h1 class="text-4xl gradient-text">CLUB GRATIS</h1>
+        </div>
+
+        <div class="search-container flex mb-5">
+            <input type="text" id="search-input" placeholder="Search by provider or country..." class="border p-2 rounded-l" />
+            <button onclick="searchProxies()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-r">
+                <i class="fas fa-search"></i>
+            </button>
+        </div>
+
+        <div class="flex justify-end mb-5">
+            <button onclick="refreshProxies()" class="refresh-button bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded">
+                <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+        </div>
+
+        <div class="flex items-center">
+            <h2 class="text-2xl mb-5 mr-2"><i class="fas fa-list mr-2"></i>Proxy List</h2>
+        </div>
+
+        <div id="proxy-list" class="space-y-4"></div>
+        <div class="flex justify-center mt-5">
+            <button id="prev-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-l" style="display: none;" onclick="prevPage()">
+                Prev
+            </button>
+            <span id="page-numbers" class="mx-2"></span>
+            <button id="next-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-r" style="display: none;" onclick="nextPage()">
+                Next
+            </button>
+        </div>
+    </div>
+
+    <div class="container mx-auto p-5 text-center mt-10">
+        <div class="flex justify-center items-center mb-3">
+            <i class="fas fa-dove text-5xl mr-2" style="color: #D3D3D3;"></i>
+            <span class="text-2xl gradient-text">CLUB GRATIS</span>
+        </div>
+        <div class="flex justify-center space-x-5 mb-5">
+            <a href="https://github.com/" target="_blank"><i class="fab fa-github text-3xl"></i></a>
+            <a href="https://www.youtube.com/" target="_blank"><i class="fab fa-youtube text-3xl"></i></a>
+            <a href="https://t.me/club_gratis1" target="_blank"><i class="fab fa-facebook text-3xl"></i></a>
+            <a href="https://t.me/club_gratis" target="_blank"><i class="fab fa-telegram text-3xl"></i></a>
+        </div>
+        <p>© 2025 CLUB GRATIS | WORKERS CLOUDFLARE</p>
+        <p>Dibuat Oleh ❤️ CLUB GRATIS</p>
+    </div>
+
+    <script>
+        let proxyList = [];
+        let filteredProxyList = [];
+        const cache = {};
+        let currentPage = 1;
+        const itemsPerPage = 10;
+
+        async function fetchProxies() {
+            const response = await fetch('https://raw.githubusercontent.com/clubgratis/Proxy/refs/heads/main/all.txt');
+            const text = await response.text();
+            const lines = text.split('\n');
+            lines.forEach(line => {
+                const [ip, port, country, isp] = line.split(',');
+                if (ip && port && country && isp) {
+                    proxyList.push({ ip, port, country, isp });
+                }
+            });
+            filteredProxyList = [...proxyList];
+            renderProxies();
+            renderPagination();
+            updateNavigationButtons();
+        }
+
+        async function checkProxy(ip, port) {
+            try {
+                const response = await fetch(`https://api-checker.aquamarinelavinia.workers.dev/?ip=${ip}:${port}`);
+                const result = await response.json();
+                return result.message && (result.message.includes('ACTIVE') || result.message.includes('ACTIVO'));
+            } catch (error) {
+                console.error(`Failed to check proxy ${ip}:${port} - ${error}`);
+                return false;
+            }
+        }
+
+        async function renderProxies() {
+            const proxyDiv = document.getElementById('proxy-list');
+            proxyDiv.innerHTML = '';
+
+            const start = (currentPage - 1) * itemsPerPage;
+            const end = start + itemsPerPage;
+            const paginatedProxies = filteredProxyList.slice(start, end);
+
+            for (const proxy of paginatedProxies) {
+                const item = document.createElement('div');
+                item.className = "bg-gray-800 border border-gray-700 p-4 rounded-lg flex flex-col";
+
+                item.innerHTML = `
+                    <div class="flex justify-between items-center">
+                        <div>
+                            <span class="font-bold">${proxy.isp}</span>
+                            <span class="status bg-gray-500 inline-block w-4 h-4 rounded-full ml-2"></span>
+                        </div>
+                    </div>
+                    <div class="text-gray-400">
+                        Country: ${proxy.country} <br />
+                        IP: ${proxy.ip}:${proxy.port}
+                    </div>
+                    <button class="mt-2 bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-4 rounded">
+                        
+                    </button>
+                `;
+                proxyDiv.appendChild(item);
+
+                const cacheKey = `${proxy.ip}:${proxy.port}`;
+                if (cache[cacheKey] !== undefined) {
+                    const statusSpan = item.querySelector('.status');
+                    const isActive = cache[cacheKey];
+                    statusSpan.className = isActive ? 'status bg-green-500 pulse inline-block w-4 h-4 rounded-full ml-2' : 'status bg-red-500 inline-block w-4 h-4 rounded-full ml-2';
+                } else {
+                    checkProxy(proxy.ip, proxy.port).then(isActive => {
+                        const statusSpan = item.querySelector('.status');
+                        cache[cacheKey] = isActive;
+                        statusSpan.className = isActive ? 'status bg-green-500 pulse inline-block w-4 h-4 rounded-full ml-2' : 'status bg-red-500 inline-block w-4 h-4 rounded-full ml-2';
+                    });
+                }
+            }
+        }
+
+        function updateNavigationButtons() {
+            const totalPages = Math.ceil(filteredProxyList.length / itemsPerPage);
+            document.getElementById('prev-button').style.display = currentPage > 1 ? 'block' : 'none';
+            document.getElementById('next-button').style.display = currentPage < totalPages ? 'block' : 'none';
+        }
+
+        function renderPagination() {
+            const pageNumbersDiv = document.getElementById('page-numbers');
+            const totalPages = Math.ceil(filteredProxyList.length / itemsPerPage);
+            pageNumbersDiv.innerHTML = '';
+
+            let startIndex = Math.max(1, currentPage - 2);
+            let endIndex = Math.min(totalPages, startIndex + 4);
+
+            if (startIndex > 1) {
+                pageNumbersDiv.appendChild(createPageButton(1, '1'));
+                if (startIndex > 2) {
+                    const ellipsis = document.createElement('span');
+                    ellipsis.className = 'mx-2';
+                    ellipsis.textContent = '...';
+                    pageNumbersDiv.appendChild(ellipsis);
+                }
+            }
+
+            for (let i = startIndex; i <= endIndex; i++) {
+                pageNumbersDiv.appendChild(createPageButton(i, i, i === currentPage));
+            }
+
+            if (endIndex < totalPages) {
+                if (endIndex < totalPages - 1) {
+                    const ellipsis = document.createElement('span');
+                    ellipsis.className = 'mx-2';
+                    ellipsis.textContent = '...';
+                    pageNumbersDiv.appendChild(ellipsis);
+                }
+                pageNumbersDiv.appendChild(createPageButton(totalPages, totalPages));
+            }
+        }
+
+        function createPageButton(page, text, isActivePage) {
+            const button = document.createElement('button');
+            button.className = "bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded" + (isActivePage ? " active-page" : "");
+            button.textContent = text;
+            button.onclick = () => {
+                currentPage = page;
+                renderProxies();
+                renderPagination();
+                updateNavigationButtons();
+            };
+            return button;
+        }
+
+        function nextPage() {
+            if (currentPage < Math.ceil(filteredProxyList.length / itemsPerPage)) {
+                currentPage++;
+                renderProxies();
+                renderPagination();
+                updateNavigationButtons();
+            }
+        }
+
+        function prevPage() {
+            if (currentPage > 1) {
+                currentPage--;
+                renderProxies();
+                renderPagination();
+                updateNavigationButtons();
+            }
+        }
+
+        function searchProxies() {
+            const query = document.getElementById('search-input').value.toLowerCase();
+            filteredProxyList = proxyList.filter(proxy =>
+                proxy.country.toLowerCase().includes(query) ||
+                proxy.isp.toLowerCase().includes(query)
+            );
+            currentPage = 1; // Reset ke halaman 1 setelah pencarian
+            renderProxies();
+            renderPagination();
+            updateNavigationButtons();
+        }
+
+        function refreshProxies() {
+            proxyList = [];
+            fetchProxies();
+        }
+        // Fetch proxies saat halaman dimuat
+        fetchProxies();
+    </script>
+</body>
+</html>
